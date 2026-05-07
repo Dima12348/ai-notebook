@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=AI Записник
+Comment=Настільний додаток з літаючим роботом-помічником
+Exec=python3 /home/dima/ai-notebook/main.py
+Icon=/home/dima/ai-notebook/assets/icon.png
+Terminal=false
+Type=Application
+Categories=Office;Utility;TextEditor;
+Keywords=notebook;notes;todo;reminder;robot;
+StartupNotify=true
