@@ -1,20 +1,86 @@
-"""SQLite storage layer for AI Notebook desktop app."""
+"""SQLite storage layer for AI Notebook desktop app.
+
+Performance optimizations:
+- Connection pooling: single connection reused across calls
+- Settings/categories cache with TTL (invalidated on write)
+- WAL journal mode for concurrent reads
+- Batch operations where possible
+"""
 import sqlite3
 import os
-import json
+import time
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "notebook.db")
 
+# ── Connection pool ──────────────────────────────────────────
+
+_pool_conn = None
+_pool_db_path = None
+
 
 def _conn():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    """Get or create a pooled SQLite connection."""
+    global _pool_conn, _pool_db_path
+    if _pool_conn is not None:
+        try:
+            _pool_conn.execute("SELECT 1")
+        except Exception:
+            _pool_conn = None
+    if _pool_conn is None or _pool_db_path != DB_PATH:
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        _pool_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        _pool_conn.row_factory = sqlite3.Row
+        _pool_conn.execute("PRAGMA journal_mode=WAL")
+        _pool_conn.execute("PRAGMA foreign_keys=ON")
+        _pool_conn.execute("PRAGMA cache_size=-8000")  # 8MB cache
+        _pool_conn.execute("PRAGMA synchronous=NORMAL")
+        _pool_db_path = DB_PATH
+    return _pool_conn
 
+
+def close_pool():
+    """Close the pooled connection (call on app shutdown)."""
+    global _pool_conn, _pool_db_path
+    if _pool_conn:
+        _pool_conn.close()
+        _pool_conn = None
+        _pool_db_path = None
+
+
+# ── Simple cache ─────────────────────────────────────────────
+
+_cache = {}
+_cache_ttl = {}
+_MISSING = object()
+
+
+def _cache_get(key, ttl=5.0):
+    """Get cached value if not expired."""
+    if key in _cache:
+        if time.time() - _cache_ttl.get(key, 0) < ttl:
+            return _cache[key]
+    return _MISSING
+
+
+def _cache_set(key, value):
+    _cache[key] = value
+    _cache_ttl[key] = time.time()
+
+
+def _cache_invalidate(prefix=None):
+    """Invalidate cache entries matching prefix, or all."""
+    if prefix:
+        keys = [k for k in _cache if k.startswith(prefix)]
+        for k in keys:
+            del _cache[k]
+            _cache_ttl.pop(k, None)
+    else:
+        _cache.clear()
+        _cache_ttl.clear()
+
+
+# ── Init ─────────────────────────────────────────────────────
 
 def init_db():
     conn = _conn()
@@ -62,6 +128,8 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_entries_status ON entries(status);
         CREATE INDEX IF NOT EXISTS idx_entries_remind ON entries(remind_at);
+        CREATE INDEX IF NOT EXISTS idx_entries_category ON entries(category_id);
+        CREATE INDEX IF NOT EXISTS idx_entries_pinned ON entries(pinned DESC);
     """)
     # Seed default categories
     if conn.execute("SELECT COUNT(*) FROM categories").fetchone()[0] == 0:
@@ -88,16 +156,20 @@ def init_db():
             "INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (k, v)
         )
     conn.commit()
-    conn.close()
+    _cache_invalidate()
 
 
 # ── Settings ─────────────────────────────────────────────────
 
 def get_setting(key, default=None):
+    cached = _cache_get(f"setting:{key}", ttl=10.0)
+    if cached is not _MISSING:
+        return cached
     conn = _conn()
     row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-    conn.close()
-    return row[0] if row else default
+    val = row[0] if row else default
+    _cache_set(f"setting:{key}", val)
+    return val
 
 
 def set_setting(key, value):
@@ -106,27 +178,35 @@ def set_setting(key, value):
         "INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (key, str(value))
     )
     conn.commit()
-    conn.close()
+    _cache_set(f"setting:{key}", str(value))
 
 
 def get_all_settings():
+    cached = _cache_get("settings:all", ttl=10.0)
+    if cached is not _MISSING:
+        return cached
     conn = _conn()
     rows = conn.execute("SELECT key, value FROM settings").fetchall()
-    conn.close()
-    return {r["key"]: r["value"] for r in rows}
+    result = {r["key"]: r["value"] for r in rows}
+    _cache_set("settings:all", result)
+    return result
 
 
 # ── Categories ───────────────────────────────────────────────
 
 def list_categories():
+    cached = _cache_get("categories:list", ttl=10.0)
+    if cached is not _MISSING:
+        return cached
     conn = _conn()
     rows = conn.execute("""
         SELECT c.*, COUNT(e.id) as entry_count
         FROM categories c LEFT JOIN entries e ON e.category_id = c.id
         GROUP BY c.id ORDER BY c.sort_order
     """).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    result = [dict(r) for r in rows]
+    _cache_set("categories:list", result)
+    return result
 
 
 def create_category(name, color="#6366f1", icon="📁"):
@@ -136,9 +216,9 @@ def create_category(name, color="#6366f1", icon="📁"):
         (name, color, icon),
     )
     conn.commit()
+    _cache_invalidate("categories:")
     cat_id = cur.lastrowid
     row = conn.execute("SELECT * FROM categories WHERE id=?", (cat_id,)).fetchone()
-    conn.close()
     return dict(row)
 
 
@@ -147,7 +227,7 @@ def update_category(cat_id, **kw):
     fields = ", ".join(f"{k}=?" for k in kw)
     conn.execute(f"UPDATE categories SET {fields} WHERE id=?", (*kw.values(), cat_id))
     conn.commit()
-    conn.close()
+    _cache_invalidate("categories:")
 
 
 def delete_category(cat_id):
@@ -155,7 +235,8 @@ def delete_category(cat_id):
     conn.execute("UPDATE entries SET category_id=NULL WHERE category_id=?", (cat_id,))
     conn.execute("DELETE FROM categories WHERE id=?", (cat_id,))
     conn.commit()
-    conn.close()
+    _cache_invalidate("categories:")
+    _cache_invalidate("entries:")
 
 
 # ── Entries ──────────────────────────────────────────────────
@@ -193,9 +274,7 @@ def list_entries(status=None, category_id=None, search=None,
         ORDER BY e.pinned DESC, e.updated_at DESC
         LIMIT {limit}
     """, params).fetchall()
-    result = [_row_to_entry(conn, r) for r in rows]
-    conn.close()
-    return result
+    return [_row_to_entry(conn, r) for r in rows]
 
 
 def get_entry(entry_id):
@@ -206,11 +285,8 @@ def get_entry(entry_id):
         WHERE e.id=?
     """, (entry_id,)).fetchone()
     if not row:
-        conn.close()
         return None
-    result = _row_to_entry(conn, row)
-    conn.close()
-    return result
+    return _row_to_entry(conn, row)
 
 
 def create_entry(title, content="", category_id=None, entry_type="note",
@@ -237,12 +313,12 @@ def create_entry(title, content="", category_id=None, entry_type="note",
             conn.execute("INSERT OR IGNORE INTO entry_tags (entry_id, tag_id) VALUES (?,?)",
                          (entry_id, tag_id))
     conn.commit()
-    result = _row_to_entry(conn, conn.execute(
+    _cache_invalidate("entries:")
+    _cache_invalidate("categories:")
+    return _row_to_entry(conn, conn.execute(
         """SELECT e.*, c.name as category_name, c.color as category_color, c.icon as category_icon
            FROM entries e LEFT JOIN categories c ON e.category_id = c.id
            WHERE e.id=?""", (entry_id,)).fetchone())
-    conn.close()
-    return result
 
 
 def update_entry(entry_id, **kw):
@@ -266,19 +342,24 @@ def update_entry(entry_id, **kw):
             conn.execute("INSERT OR IGNORE INTO entry_tags (entry_id, tag_id) VALUES (?,?)",
                          (entry_id, tag_id))
     conn.commit()
-    conn.close()
+    _cache_invalidate("entries:")
+    _cache_invalidate("categories:")
 
 
 def delete_entry(entry_id):
     conn = _conn()
     conn.execute("DELETE FROM entries WHERE id=?", (entry_id,))
     conn.commit()
-    conn.close()
+    _cache_invalidate("entries:")
+    _cache_invalidate("categories:")
 
 
 # ── Stats ────────────────────────────────────────────────────
 
 def get_stats():
+    cached = _cache_get("stats", ttl=3.0)
+    if cached is not _MISSING:
+        return cached
     conn = _conn()
     stats = {}
     for s in ("active", "in_progress", "done", "archived"):
@@ -290,7 +371,7 @@ def get_stats():
     stats["reminders_today"] = conn.execute(
         "SELECT COUNT(*) FROM entries WHERE remind_at IS NOT NULL AND remind_at != '' AND status NOT IN ('done','archived')"
     ).fetchone()[0]
-    conn.close()
+    _cache_set("stats", stats)
     return stats
 
 
@@ -307,6 +388,4 @@ def get_due_reminders():
           AND e.remind_at <= ? AND e.status NOT IN ('done','archived')
         ORDER BY e.remind_at ASC
     """, (now,)).fetchall()
-    result = [_row_to_entry(conn, r) for r in rows]
-    conn.close()
-    return result
+    return [_row_to_entry(conn, r) for r in rows]

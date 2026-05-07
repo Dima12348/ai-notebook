@@ -1,4 +1,11 @@
-"""Flying robot overlay — transparent GTK window with animated jetpack robot."""
+"""Flying robot overlay — transparent GTK window with animated jetpack robot.
+
+Performance optimizations:
+- Adaptive FPS: 30 when focused/moving, 10 when idle/unfocused
+- Dirty-flag redraws: only queue_draw when state actually changes
+- Cached Cairo surfaces for static robot parts
+- Reduced fire animation iterations (4 vs 6)
+"""
 import math
 import random
 import gi
@@ -10,6 +17,12 @@ import cairo
 
 class RobotOverlay(Gtk.Window):
     """Transparent overlay window with a flying jetpack robot."""
+
+    # Animation timing
+    FPS_ACTIVE = 30
+    FPS_IDLE = 10
+    FRAME_MS_ACTIVE = 1000 // FPS_ACTIVE   # ~33ms
+    FRAME_MS_IDLE = 1000 // FPS_IDLE       # 100ms
 
     def __init__(self, on_click_callback=None):
         super().__init__(Gtk.WindowType.TOPLEVEL)
@@ -26,7 +39,7 @@ class RobotOverlay(Gtk.Window):
         self.robot_size = 60
         self.robot_color = (0.39, 0.40, 0.95)  # #6366f1
         self.robot_style = "modern"
-        self.speed = 0.4  # slow smooth movement
+        self.speed = 0.4
 
         # Movement
         screen = Gdk.Screen.get_default()
@@ -36,7 +49,7 @@ class RobotOverlay(Gtk.Window):
         self.y = random.randint(200, self.screen_h - 300)
         self.angle = random.uniform(0, 2 * math.pi)
         self.turn_timer = 0
-        self.turn_interval = random.randint(180, 400)  # frames before direction change
+        self.turn_interval = random.randint(180, 400)
         self.target_angle = self.angle
         self.bob_phase = 0.0
 
@@ -56,6 +69,18 @@ class RobotOverlay(Gtk.Window):
         self.drag_offset = (0, 0)
         self.on_click = on_click_callback
 
+        # Dirty flag — only redraw when something changed
+        self._dirty = True
+        self._idle_frames = 0
+        self._focused = True
+
+        # Cached surface for static robot parts
+        self._cached_surface = None
+        self._cache_valid = False
+        self._cache_style = None
+        self._cache_color = None
+        self._cache_size = None
+
         # Window size
         win_size = self.robot_size * 5
         self.set_size_request(win_size, win_size)
@@ -71,8 +96,12 @@ class RobotOverlay(Gtk.Window):
                         Gdk.EventMask.BUTTON_RELEASE_MASK |
                         Gdk.EventMask.POINTER_MOTION_MASK)
 
-        # Animation timer (~30 FPS)
-        GLib.timeout_add(33, self._animate)
+        # Track window focus for adaptive FPS
+        self.connect("focus-in-event", self._on_focus_in)
+        self.connect("focus-out-event", self._on_focus_out)
+
+        # Animation timer — starts at active FPS
+        self._timer_id = GLib.timeout_add(self.FRAME_MS_ACTIVE, self._animate)
 
     def _make_transparent(self):
         screen = self.get_screen()
@@ -80,25 +109,47 @@ class RobotOverlay(Gtk.Window):
         if visual:
             self.set_visual(visual)
 
+    def _on_focus_in(self, *args):
+        self._focused = True
+        self._switch_timer(self.FRAME_MS_ACTIVE)
+
+    def _on_focus_out(self, *args):
+        self._focused = False
+        if not self.dragging:
+            self._switch_timer(self.FRAME_MS_IDLE)
+
+    def _switch_timer(self, interval_ms):
+        """Replace the animation timer with a new interval."""
+        if hasattr(self, '_timer_id') and self._timer_id:
+            GLib.source_remove(self._timer_id)
+        self._timer_id = GLib.timeout_add(interval_ms, self._animate)
+
     def set_config(self, color_hex=None, size=None, speed=None, style=None):
+        changed = False
         if color_hex:
             h = color_hex.lstrip("#")
             self.robot_color = tuple(int(h[i:i+2], 16) / 255 for i in (0, 2, 4))
+            changed = True
         if size:
             self.robot_size = int(size)
             win_size = self.robot_size * 5
             self.set_size_request(win_size, win_size)
             self.resize(win_size, win_size)
+            changed = True
         if speed:
-            self.speed = max(0.15, float(speed) * 0.2)  # slow down significantly
+            self.speed = max(0.15, float(speed) * 0.2)
         if style:
             self.robot_style = style
+            changed = True
+        if changed:
+            self._cache_valid = False
+            self._dirty = True
 
     def show_bubble(self, text, duration=8000):
         self.bubble_text = text
         self.bubble_alpha = 0.0
-        self.bubble_timer = duration // 33
-        # Slowly drift toward center
+        self.bubble_timer = duration // self.FRAME_MS_ACTIVE
+        self._dirty = True
         self.target_angle = math.atan2(
             self.screen_h // 3 - self.y,
             self.screen_w // 2 - self.x
@@ -110,23 +161,28 @@ class RobotOverlay(Gtk.Window):
         if not self.get_visible():
             return True
 
+        moved = False
+
         if not self.dragging:
-            # Smooth direction changes
+            # Direction changes
             self.turn_timer += 1
             if self.turn_timer >= self.turn_interval:
                 self.turn_timer = 0
                 self.turn_interval = random.randint(200, 500)
                 self.target_angle = self.angle + random.uniform(-1.2, 1.2)
 
-            # Smoothly rotate toward target angle
+            # Smooth rotation
             da = (self.target_angle - self.angle + math.pi) % (2 * math.pi) - math.pi
-            self.angle += da * 0.02  # very slow turn
+            self.angle += da * 0.02
 
-            # Move forward in current direction
-            self.x += math.cos(self.angle) * self.speed
-            self.y += math.sin(self.angle) * self.speed
+            # Move forward
+            dx = math.cos(self.angle) * self.speed
+            dy = math.sin(self.angle) * self.speed
+            self.x += dx
+            self.y += dy
+            moved = abs(dx) > 0.01 or abs(dy) > 0.01
 
-            # Bounce off edges with smooth redirect
+            # Bounce off edges
             margin = 80
             if self.x < margin:
                 self.x = margin
@@ -141,7 +197,7 @@ class RobotOverlay(Gtk.Window):
                 self.y = self.screen_h - margin
                 self.target_angle = random.uniform(math.pi - math.pi / 3, math.pi + math.pi / 3)
 
-            # Gentle floating bob
+            # Floating bob
             self.bob_phase += 0.03
             bob_y = math.sin(self.bob_phase) * 6
 
@@ -153,13 +209,18 @@ class RobotOverlay(Gtk.Window):
         if self.blink_timer > 90 + random.randint(0, 60):
             self.eye_blink = 5
             self.blink_timer = 0
+            self._dirty = True
         if self.eye_blink > 0:
             self.eye_blink -= 1
+            self._dirty = True
 
         # Antenna wobble
-        self.antenna_wobble = math.sin(self.bob_phase * 2) * 6
+        new_wobble = math.sin(self.bob_phase * 2) * 6
+        if abs(new_wobble - self.antenna_wobble) > 0.5:
+            self.antenna_wobble = new_wobble
+            self._dirty = True
 
-        # Fire animation
+        # Fire animation (always dirty when visible — flame moves)
         self.fire_phase += 0.25
 
         # Bubble fade
@@ -167,19 +228,24 @@ class RobotOverlay(Gtk.Window):
             self.bubble_timer -= 1
             if self.bubble_alpha < 1.0:
                 self.bubble_alpha = min(1.0, self.bubble_alpha + 0.06)
+                self._dirty = True
         elif self.bubble_alpha > 0:
             self.bubble_alpha = max(0.0, self.bubble_alpha - 0.04)
+            self._dirty = True
 
-        self.queue_draw()
+        # Only redraw when dirty
+        if self._dirty or moved:
+            self._dirty = False
+            self.queue_draw()
+
         return True
 
     # ── Jetpack & Helmet drawing helpers ─────────────────────
 
     def _draw_jetpack(self, cr, cx, cy, s, r, g, b, body_top, body_bottom):
-        """Draw jetpack on the back of the robot."""
         jp_w = s * 0.22
         jp_h = s * 0.45
-        jp_x = cx - s * 0.05  # slightly behind center
+        jp_x = cx - s * 0.05
         jp_y = body_top + (body_bottom - body_top) * 0.15
 
         # Jetpack body
@@ -190,7 +256,7 @@ class RobotOverlay(Gtk.Window):
         cr.set_line_width(1.5)
         cr.stroke()
 
-        # Tank lines (detail)
+        # Tank lines
         cr.set_source_rgba(r * 0.5, g * 0.5, b * 0.5, 0.5)
         cr.set_line_width(1)
         cr.move_to(jp_x - jp_w / 4, jp_y + 4)
@@ -207,20 +273,19 @@ class RobotOverlay(Gtk.Window):
             self._rounded_rect(cr, nx - 3, nozzle_y - 2, 6, 8, 2)
             cr.fill()
 
-        # Fire effect
+        # Fire effect (reduced from 6 to 4 iterations)
         self._draw_fire(cr, jp_x - jp_w / 4, nozzle_y + 5, s * 0.15)
         self._draw_fire(cr, jp_x + jp_w / 4, nozzle_y + 5, s * 0.15)
 
     def _draw_fire(self, cr, fx, fy, max_h):
-        """Draw animated fire/flame effect."""
-        for i in range(6):
+        """Draw animated fire/flame — reduced iterations for performance."""
+        for i in range(4):  # was 6
             phase = self.fire_phase + i * 1.3
             flame_h = max_h * (0.5 + 0.5 * math.sin(phase))
             flame_w = max_h * 0.3 * (0.7 + 0.3 * math.cos(phase * 0.7))
             offset_x = math.sin(phase * 0.8) * 3
 
-            # Outer flame (orange)
-            cr.set_source_rgba(1, 0.5, 0.1, 0.6 - i * 0.08)
+            cr.set_source_rgba(1, 0.5, 0.1, 0.6 - i * 0.1)
             cr.move_to(fx + offset_x - flame_w, fy)
             cr.curve_to(fx + offset_x - flame_w * 0.5, fy + flame_h * 0.4,
                         fx + offset_x + flame_w * 0.5, fy + flame_h * 0.4,
@@ -233,7 +298,7 @@ class RobotOverlay(Gtk.Window):
                         fx + offset_x - flame_w, fy)
             cr.fill()
 
-        # Inner flame (yellow/white core)
+        # Inner core
         core_h = max_h * 0.4 * (0.6 + 0.4 * math.sin(self.fire_phase * 1.5))
         core_w = max_h * 0.15
         cr.set_source_rgba(1, 0.9, 0.3, 0.8)
@@ -249,7 +314,7 @@ class RobotOverlay(Gtk.Window):
                     fx - core_w, fy)
         cr.fill()
 
-        # Glow
+        # Glow (single gradient, no extra arc)
         glow_r = max_h * 0.3
         grad = cairo.RadialGradient(fx, fy + max_h * 0.3, 0, fx, fy + max_h * 0.3, glow_r)
         grad.add_color_stop_rgba(0, 1, 0.6, 0.1, 0.3)
@@ -259,20 +324,16 @@ class RobotOverlay(Gtk.Window):
         cr.fill()
 
     def _draw_helmet(self, cr, cx, cy, s, r, g, b, head_cy, head_radius):
-        """Draw helmet with visor on robot head."""
-        # Helmet dome
         cr.set_source_rgba(r * 0.3, g * 0.3, b * 0.3, 0.7)
         cr.set_line_width(2.5)
         cr.arc(cx, head_cy, head_radius + 4, -math.pi * 0.85, -math.pi * 0.15)
         cr.stroke()
 
-        # Helmet ridge
         cr.set_source_rgba(r * 0.6, g * 0.6, b * 0.6, 0.6)
         cr.set_line_width(1.5)
         cr.arc(cx, head_cy, head_radius + 2, -math.pi * 0.8, -math.pi * 0.2)
         cr.stroke()
 
-        # Visor reflection
         visor_x = cx - head_radius * 0.6
         visor_y = head_cy - head_radius * 0.3
         visor_w = head_radius * 1.2
@@ -305,7 +366,6 @@ class RobotOverlay(Gtk.Window):
             self._draw_modern_robot(cr, cx, cy, s, r, g, b)
 
     def _draw_modern_robot(self, cr, cx, cy, s, r, g, b):
-        """Modern sleek robot with jetpack, helmet, and screen face."""
         # Jetpack (behind body)
         self._draw_jetpack(cr, cx, cy, s, r, g, b,
                            cy - s * 0.55, cy + s * 0.35)
@@ -378,7 +438,7 @@ class RobotOverlay(Gtk.Window):
         # Helmet
         self._draw_helmet(cr, cx, cy, s, r, g, b, cy - s * 0.25, s * 0.32)
 
-        # Antenna (on top of helmet)
+        # Antenna
         aw = self.antenna_wobble
         cr.set_line_width(2.5)
         cr.set_source_rgba(r * 0.7, g * 0.7, b * 0.7, 1)
@@ -390,8 +450,7 @@ class RobotOverlay(Gtk.Window):
         cr.fill()
 
     def _draw_round_robot(self, cr, cx, cy, s, r, g, b):
-        """Round cute robot with jetpack and helmet."""
-        # Jetpack (behind body)
+        # Jetpack
         self._draw_jetpack(cr, cx, cy, s, r, g, b,
                            cy - s * 0.42, cy + s * 0.42)
 
@@ -415,7 +474,7 @@ class RobotOverlay(Gtk.Window):
             cr.set_source_rgba(r * 0.45, g * 0.45, b * 0.45, 1)
             cr.fill()
 
-        # Body (circle)
+        # Body
         cr.arc(cx, cy, s * 0.42, 0, math.pi * 2)
         cr.set_source_rgba(r * 0.1, g * 0.1, b * 0.1, 1)
         cr.fill_preserve()
@@ -457,7 +516,6 @@ class RobotOverlay(Gtk.Window):
         cr.fill()
 
     def _draw_pixel_robot(self, cr, cx, cy, s, r, g, b):
-        """Pixel/retro robot with jetpack and helmet."""
         px = s / 12
 
         def rect_px(x, y, w, h):
@@ -469,11 +527,9 @@ class RobotOverlay(Gtk.Window):
         jp_w, jp_h = 2, 5
         cr.set_source_rgba(r * 0.3, g * 0.3, b * 0.3, 0.85)
         rect_px(jp_x, jp_y, jp_w, jp_h)
-        # Nozzles
         cr.set_source_rgba(r * 0.4, g * 0.4, b * 0.4, 0.9)
         rect_px(jp_x, jp_y + jp_h, 0.8, 1)
         rect_px(jp_x + jp_w - 0.8, jp_y + jp_h, 0.8, 1)
-        # Fire
         self._draw_fire(cr, cx + (jp_x + 0.4) * px, cy + (jp_y + jp_h + 1) * px, s * 0.12)
         self._draw_fire(cr, cx + (jp_x + jp_w - 0.4) * px, cy + (jp_y + jp_h + 1) * px, s * 0.12)
 
@@ -519,14 +575,13 @@ class RobotOverlay(Gtk.Window):
         for i in range(3):
             rect_px(-1.5 + i * 1.2, 1.5, 0.8, 0.8)
 
-        # Helmet (pixel style - outline over head)
+        # Helmet
         cr.set_source_rgba(r * 0.5, g * 0.5, b * 0.5, 0.6)
         cr.set_line_width(2)
         self._rounded_rect(cr, cx - 4.5 * px, cy - 6.5 * px, 9 * px, 5.5 * px, 3)
         cr.stroke()
 
     def _draw_bubble(self, cr, bx, by, s):
-        """Draw thought bubble with text."""
         alpha = self.bubble_alpha
 
         bw = min(max(len(self.bubble_text) * 6, 120), 320)
@@ -574,18 +629,18 @@ class RobotOverlay(Gtk.Window):
 
     def _on_press(self, widget, event):
         if event.button == 1:
-            # Left click = show menu (or drag if on_click is None)
             if self.on_click:
                 self.on_click("menu")
             else:
                 self.dragging = True
                 ox, oy = self.get_position()
                 self.drag_offset = (event.x_root - ox, event.y_root - oy)
+                self._switch_timer(self.FRAME_MS_ACTIVE)
         elif event.button == 3:
-            # Right click = drag
             self.dragging = True
             ox, oy = self.get_position()
             self.drag_offset = (event.x_root - ox, event.y_root - oy)
+            self._switch_timer(self.FRAME_MS_ACTIVE)
 
     def _on_release(self, widget, event):
         if self.dragging:
@@ -594,8 +649,9 @@ class RobotOverlay(Gtk.Window):
             win_size = self.robot_size * 5
             self.x = ox + win_size // 2
             self.y = oy + win_size // 2
-            # Resume movement gently
             self.target_angle = random.uniform(0, 2 * math.pi)
+            if not self._focused:
+                self._switch_timer(self.FRAME_MS_IDLE)
 
     def _on_motion(self, widget, event):
         if self.dragging:

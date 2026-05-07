@@ -1,4 +1,10 @@
-"""Main application window — modern dark GTK3 UI."""
+"""Main application window — modern dark GTK3 UI.
+
+Performance optimizations:
+- Debounced search (300ms delay)
+- Deferred refresh via GLib.idle_add
+- Cleanup on window destroy (close DB pool, stop scheduler)
+"""
 import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
@@ -433,6 +439,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.scheduler = scheduler
         self.current_filter = {}
         self.categories = []
+        self._search_timer_id = None  # debounce timer for search
+        self._refresh_pending = False  # deferred refresh flag
 
         # Main layout
         hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -463,6 +471,17 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.show_all()
         self._refresh_all()
+
+        # Cleanup on window destroy
+        self.connect("destroy", self._on_destroy)
+
+    def _on_destroy(self, widget):
+        """Clean up resources on window close."""
+        if self._search_timer_id:
+            GLib.source_remove(self._search_timer_id)
+        if self.scheduler:
+            self.scheduler.stop()
+        storage.close_pool()
 
     # ── Sidebar ──────────────────────────────────────────────
 
@@ -527,8 +546,11 @@ class MainWindow(Gtk.ApplicationWindow):
         return sidebar
 
     def _refresh_sidebar_categories(self):
-        for child in self.cat_box.get_children():
-            self.cat_box.remove(child)
+        children = self.cat_box.get_children()
+        if children:
+            self.cat_box.set_visible(False)
+            for child in children:
+                self.cat_box.remove(child)
         self.categories = storage.list_categories()
         for c in self.categories:
             hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -554,6 +576,7 @@ class MainWindow(Gtk.ApplicationWindow):
             hbox.pack_start(del_btn, False, False, 0)
 
             self.cat_box.pack_start(hbox, False, False, 0)
+        self.cat_box.set_visible(True)
         self.cat_box.show_all()
 
     def _switch_page(self, key):
@@ -823,11 +846,20 @@ class MainWindow(Gtk.ApplicationWindow):
     # ── Data Refresh ─────────────────────────────────────────
 
     def _refresh_all(self):
+        """Refresh all UI components. Coalesces rapid calls."""
+        if self._refresh_pending:
+            return
+        self._refresh_pending = True
+        GLib.idle_add(self._do_refresh_all)
+
+    def _do_refresh_all(self):
+        self._refresh_pending = False
         self._refresh_stats()
         self._refresh_sidebar_categories()
         self._refresh_entries()
         self._refresh_recent()
         self._refresh_sidebar_stats()
+        return False  # don't repeat
 
     def _refresh_stats(self):
         s = storage.get_stats()
@@ -843,19 +875,27 @@ class MainWindow(Gtk.ApplicationWindow):
         )
 
     def _refresh_recent(self):
-        for child in self.recent_list.get_children():
-            self.recent_list.remove(child)
+        # Batch remove — hide first to avoid visual flicker
+        children = self.recent_list.get_children()
+        if children:
+            self.recent_list.set_visible(False)
+            for child in children:
+                self.recent_list.remove(child)
         entries = storage.list_entries(limit=8)
         if not entries:
             self.recent_list.pack_start(_label("  Записів поки немає", ["entry-meta"]), False, False, 8)
         else:
             for e in entries:
                 self.recent_list.pack_start(self._entry_row(e), False, False, 0)
+        self.recent_list.set_visible(True)
         self.recent_list.show_all()
 
     def _refresh_entries(self):
-        for child in self.entries_list.get_children():
-            self.entries_list.remove(child)
+        children = self.entries_list.get_children()
+        if children:
+            self.entries_list.set_visible(False)
+            for child in children:
+                self.entries_list.remove(child)
         entries = storage.list_entries(**self.current_filter)
         if not entries:
             self.entries_list.pack_start(
@@ -864,6 +904,7 @@ class MainWindow(Gtk.ApplicationWindow):
         else:
             for e in entries:
                 self.entries_list.pack_start(self._entry_card(e), False, False, 0)
+        self.entries_list.set_visible(True)
         self.entries_list.show_all()
 
     # ── Entry Widgets ────────────────────────────────────────
@@ -1192,12 +1233,21 @@ class MainWindow(Gtk.ApplicationWindow):
             self._refresh_all()
 
     def _on_search(self, entry):
-        text = entry.get_text().strip()
+        # Cancel previous debounce timer
+        if self._search_timer_id:
+            GLib.source_remove(self._search_timer_id)
+        # Debounce: wait 300ms after last keystroke
+        self._search_timer_id = GLib.timeout_add(300, self._do_search)
+
+    def _do_search(self):
+        self._search_timer_id = None
+        text = self.search_entry.get_text().strip()
         if text:
             self.current_filter = {"search": text}
         else:
             self.current_filter = {}
         self._refresh_entries()
+        return False  # don't repeat
 
     def _on_filter_changed(self, combo):
         f = {}
