@@ -36,7 +36,7 @@ class RobotPopup(Gtk.Window):
         header.set_margin_top(10)
         header.set_margin_bottom(8)
 
-        title = Gtk.Label(label="🤖 Робот-помічник")
+        title = Gtk.Label(label="🤖 Robot Assistant")
         title.get_style_context().add_class("popup-title")
         header.pack_start(title, True, True, 0)
 
@@ -54,7 +54,7 @@ class RobotPopup(Gtk.Window):
         add_box.set_margin_bottom(8)
 
         self.quick_entry = Gtk.Entry()
-        self.quick_entry.set_placeholder_text("✍️ Швидкий запис...")
+        self.quick_entry.set_placeholder_text("✍️ Quick note...")
         self.quick_entry.connect("activate", self._on_quick_add)
         add_box.pack_start(self.quick_entry, True, True, 0)
 
@@ -75,8 +75,8 @@ class RobotPopup(Gtk.Window):
         filter_box.set_margin_bottom(6)
 
         self.filter_buttons = {}
-        for fid, label in [("all", "📋 Всі"), ("active", "📝 Активні"),
-                            ("in_progress", "🔄 В роботі"), ("done", "✅ Готові")]:
+        for fid, label in [("all", "📋 All"), ("active", "📝 Active"),
+                            ("in_progress", "🔄 In Progress"), ("done", "✅ Done")]:
             btn = Gtk.ToggleButton(label=label)
             btn.set_relief(Gtk.ReliefStyle.NONE)
             btn.get_style_context().add_class("popup-filter")
@@ -104,7 +104,7 @@ class RobotPopup(Gtk.Window):
         self.count_label.get_style_context().add_class("popup-meta")
         footer.pack_start(self.count_label, True, True, 0)
 
-        open_btn = Gtk.Button(label="📂 Відкрити додаток")
+        open_btn = Gtk.Button(label="📂 Open App")
         open_btn.get_style_context().add_class("popup-open-btn")
         open_btn.connect("clicked", lambda b: self._open_main())
         footer.pack_end(open_btn, False, False, 0)
@@ -240,7 +240,7 @@ class RobotPopup(Gtk.Window):
             row = self._build_entry_row(entry)
             self.entries_box.pack_start(row, False, False, 0)
 
-        self.count_label.set_text(f"📋 {len(entries)} записів")
+        self.count_label.set_text(f"📋 {len(entries)} entries")
         self.entries_box.show_all()
 
     def _build_entry_row(self, entry):
@@ -256,7 +256,7 @@ class RobotPopup(Gtk.Window):
         # Title + meta
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
 
-        title_text = entry.get("title", "Без назви")
+        title_text = entry.get("title", "Untitled")
         if entry.get("pinned"):
             title_text = "📌 " + title_text
         title = Gtk.Label(label=title_text)
@@ -345,9 +345,9 @@ class RobotPopup(Gtk.Window):
             parent=self, modal=True,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.YES_NO,
-            text="Видалити запис?",
+            text="Delete entry?",
         )
-        dlg.format_secondary_text("Цю дію не можна скасувати.")
+        dlg.format_secondary_text("This action cannot be undone.")
         if dlg.run() == Gtk.ResponseType.YES:
             storage.delete_entry(entry_id)
             self.refresh()
@@ -367,11 +367,22 @@ class RobotPopup(Gtk.Window):
 
     def _on_focus_out(self, widget, event):
         """Hide popup when focus is lost (with small delay)."""
-        GLib.timeout_add(200, self._check_focus)
+        GLib.timeout_add(350, self._check_focus)
         return False
 
     def _check_focus(self):
         """Check if we still have focus, hide if not."""
         if self.is_visible() and not self.has_toplevel_focus():
+            # Also check if the robot overlay grabbed focus
+            # Don't hide if mouse is over the popup
+            display = Gdk.Display.get_default()
+            seat = display.get_default_seat()
+            pointer = seat.get_pointer()
+            if pointer:
+                win, x, y = pointer.get_position()
+                # Get popup window bounds
+                pop_win = self.get_window()
+                if pop_win and win == pop_win:
+                    return False
             self.hide()
         return False

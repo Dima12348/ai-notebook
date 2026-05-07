@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AI Записник — Desktop app with flying robot assistant."""
+"""AI Notebook — Desktop app with flying robot assistant."""
 import sys
 import os
 

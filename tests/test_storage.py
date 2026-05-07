@@ -29,8 +29,8 @@ class TestInitDb:
         cats = storage.list_categories()
         assert len(cats) == 5
         names = [c["name"] for c in cats]
-        assert "Справи" in names
-        assert "Нотатки" in names
+        assert "Tasks" in names
+        assert "Notes" in names
 
     def test_creates_default_settings(self):
         storage.init_db()

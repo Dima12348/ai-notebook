@@ -41,16 +41,12 @@ class RobotOverlay(Gtk.Window):
         self.robot_style = "modern"
         self.speed = 0.4
 
-        # Movement
+        # Position (stationary, bottom-right corner)
         screen = Gdk.Screen.get_default()
         self.screen_w = screen.get_width()
         self.screen_h = screen.get_height()
-        self.x = random.randint(200, self.screen_w - 300)
-        self.y = random.randint(200, self.screen_h - 300)
-        self.angle = random.uniform(0, 2 * math.pi)
-        self.turn_timer = 0
-        self.turn_interval = random.randint(180, 400)
-        self.target_angle = self.angle
+        self.x = self.screen_w - 200
+        self.y = self.screen_h - 300
         self.bob_phase = 0.0
 
         # Thought bubble
@@ -63,6 +59,10 @@ class RobotOverlay(Gtk.Window):
         self.blink_timer = 0
         self.antenna_wobble = 0.0
         self.fire_phase = 0.0
+
+        # Emotions: neutral, happy, sad, thinking, surprised, sleepy, excited
+        self.emotion = "neutral"
+        self.emotion_timer = 0  # auto-reset after duration
 
         # Dragging
         self.dragging = False
@@ -150,10 +150,12 @@ class RobotOverlay(Gtk.Window):
         self.bubble_alpha = 0.0
         self.bubble_timer = duration // self.FRAME_MS_ACTIVE
         self._dirty = True
-        self.target_angle = math.atan2(
-            self.screen_h // 3 - self.y,
-            self.screen_w // 2 - self.x
-        )
+
+    def set_emotion(self, emotion, duration_sec=10):
+        """Set robot emotion: neutral, happy, sad, thinking, surprised, sleepy, excited."""
+        self.emotion = emotion
+        self.emotion_timer = duration_sec * self.FPS_ACTIVE  # frames
+        self._dirty = True
 
     # ── Animation ────────────────────────────────────────────
 
@@ -161,46 +163,11 @@ class RobotOverlay(Gtk.Window):
         if not self.get_visible():
             return True
 
-        moved = False
+        # Floating bob (stationary — only vertical oscillation)
+        self.bob_phase += 0.03
+        bob_y = math.sin(self.bob_phase) * 6
 
         if not self.dragging:
-            # Direction changes
-            self.turn_timer += 1
-            if self.turn_timer >= self.turn_interval:
-                self.turn_timer = 0
-                self.turn_interval = random.randint(200, 500)
-                self.target_angle = self.angle + random.uniform(-1.2, 1.2)
-
-            # Smooth rotation
-            da = (self.target_angle - self.angle + math.pi) % (2 * math.pi) - math.pi
-            self.angle += da * 0.02
-
-            # Move forward
-            dx = math.cos(self.angle) * self.speed
-            dy = math.sin(self.angle) * self.speed
-            self.x += dx
-            self.y += dy
-            moved = abs(dx) > 0.01 or abs(dy) > 0.01
-
-            # Bounce off edges
-            margin = 80
-            if self.x < margin:
-                self.x = margin
-                self.target_angle = random.uniform(-0.5, 0.5)
-            elif self.x > self.screen_w - margin:
-                self.x = self.screen_w - margin
-                self.target_angle = random.uniform(math.pi - 0.5, math.pi + 0.5)
-            if self.y < margin:
-                self.y = margin
-                self.target_angle = random.uniform(-math.pi / 3, math.pi / 3)
-            elif self.y > self.screen_h - margin:
-                self.y = self.screen_h - margin
-                self.target_angle = random.uniform(math.pi - math.pi / 3, math.pi + math.pi / 3)
-
-            # Floating bob
-            self.bob_phase += 0.03
-            bob_y = math.sin(self.bob_phase) * 6
-
             win_size = self.robot_size * 5
             self.move(int(self.x - win_size // 2), int(self.y - win_size // 2 + bob_y))
 
@@ -232,6 +199,13 @@ class RobotOverlay(Gtk.Window):
         elif self.bubble_alpha > 0:
             self.bubble_alpha = max(0.0, self.bubble_alpha - 0.04)
             self._dirty = True
+
+        # Emotion timer — auto-reset to neutral
+        if self.emotion_timer > 0:
+            self.emotion_timer -= 1
+            self._dirty = True
+            if self.emotion_timer <= 0:
+                self.emotion = "neutral"
 
         # Only redraw when dirty
         if self._dirty or moved:
@@ -415,20 +389,8 @@ class RobotOverlay(Gtk.Window):
         cr.set_source_rgba(r * 0.06, g * 0.06, b * 0.06, 1)
         cr.fill()
 
-        # Eyes
-        eye_y = cy - s * 0.25
-        eye_h = 5 if self.eye_blink > 0 else 7
-        cr.set_source_rgba(0.4, 1, 0.6, 1)
-        self._rounded_rect(cr, cx - s * 0.17, eye_y - eye_h / 2, 10, eye_h, 3)
-        cr.fill()
-        self._rounded_rect(cr, cx + s * 0.07, eye_y - eye_h / 2, 10, eye_h, 3)
-        cr.fill()
-
-        # Mouth
-        cr.set_source_rgba(0.4, 1, 0.6, 0.7)
-        cr.set_line_width(2)
-        cr.arc(cx, cy - s * 0.08, 10, 0.2, math.pi - 0.2)
-        cr.stroke()
+        # Eyes + Mouth (emotion-aware)
+        self._draw_face_emotion(cr, cx, cy - s * 0.25, s, r, g, b)
 
         # Chest light
         cr.set_source_rgba(r, g, b, 0.5 + 0.4 * math.sin(self.bob_phase * 3))
@@ -482,26 +444,8 @@ class RobotOverlay(Gtk.Window):
         cr.set_line_width(2.5)
         cr.stroke()
 
-        # Eyes
-        eye_y = cy - s * 0.1
-        eye_h = 4 if self.eye_blink > 0 else 8
-        cr.set_source_rgba(1, 1, 1, 0.95)
-        cr.arc(cx - s * 0.14, eye_y, eye_h, 0, math.pi * 2)
-        cr.fill()
-        cr.arc(cx + s * 0.14, eye_y, eye_h, 0, math.pi * 2)
-        cr.fill()
-        if self.eye_blink == 0:
-            cr.set_source_rgba(0.1, 0.1, 0.15, 1)
-            cr.arc(cx - s * 0.14, eye_y, 3, 0, math.pi * 2)
-            cr.fill()
-            cr.arc(cx + s * 0.14, eye_y, 3, 0, math.pi * 2)
-            cr.fill()
-
-        # Mouth
-        cr.set_source_rgba(r, g, b, 0.7)
-        cr.set_line_width(2)
-        cr.arc(cx, cy + s * 0.1, 8, 0.3, math.pi - 0.3)
-        cr.stroke()
+        # Eyes + Mouth (emotion-aware)
+        self._draw_face_emotion(cr, cx, cy - s * 0.1, s, r, g, b, style="round")
 
         # Helmet
         self._draw_helmet(cr, cx, cy, s, r, g, b, cy - s * 0.05, s * 0.44)
@@ -581,6 +525,220 @@ class RobotOverlay(Gtk.Window):
         self._rounded_rect(cr, cx - 4.5 * px, cy - 6.5 * px, 9 * px, 5.5 * px, 3)
         cr.stroke()
 
+    def _draw_face_emotion(self, cr, cx, eye_y, s, r, g, b, style="modern"):
+        """Draw eyes and mouth based on current emotion."""
+        emo = self.emotion
+        blinking = self.eye_blink > 0
+
+        if style == "round":
+            # Round style: circular eyes
+            eye_r = 4 if blinking else 8
+            cr.set_source_rgba(1, 1, 1, 0.95)
+
+            if emo == "happy":
+                # ^_^ — arc eyes
+                cr.set_line_width(2.5)
+                cr.arc(cx - s * 0.14, eye_y, 6, math.pi + 0.3, -0.3)
+                cr.stroke()
+                cr.arc(cx + s * 0.14, eye_y, 6, math.pi + 0.3, -0.3)
+                cr.stroke()
+            elif emo == "sad":
+                # T_T — teardrop eyes
+                cr.arc(cx - s * 0.14, eye_y, eye_r, 0, math.pi * 2)
+                cr.fill()
+                cr.arc(cx + s * 0.14, eye_y, eye_r, 0, math.pi * 2)
+                cr.fill()
+                # Teardrop
+                cr.set_source_rgba(0.4, 0.7, 1.0, 0.7)
+                cr.arc(cx - s * 0.14, eye_y + 10, 3, 0, math.pi * 2)
+                cr.fill()
+            elif emo == "surprised":
+                # O_O — big circles
+                cr.arc(cx - s * 0.14, eye_y, 10, 0, math.pi * 2)
+                cr.fill()
+                cr.arc(cx + s * 0.14, eye_y, 10, 0, math.pi * 2)
+                cr.fill()
+                cr.set_source_rgba(0.1, 0.1, 0.15, 1)
+                cr.arc(cx - s * 0.14, eye_y, 4, 0, math.pi * 2)
+                cr.fill()
+                cr.arc(cx + s * 0.14, eye_y, 4, 0, math.pi * 2)
+                cr.fill()
+            elif emo == "sleepy":
+                # -_- — half-closed
+                cr.set_line_width(2.5)
+                cr.move_to(cx - s * 0.14 - 6, eye_y)
+                cr.line_to(cx - s * 0.14 + 6, eye_y)
+                cr.stroke()
+                cr.move_to(cx + s * 0.14 - 6, eye_y)
+                cr.line_to(cx + s * 0.14 + 6, eye_y)
+                cr.stroke()
+            elif emo == "thinking":
+                # One eye closed, one open
+                cr.arc(cx - s * 0.14, eye_y, eye_r, 0, math.pi * 2)
+                cr.fill()
+                cr.set_source_rgba(0.1, 0.1, 0.15, 1)
+                cr.arc(cx - s * 0.14, eye_y, 3, 0, math.pi * 2)
+                cr.fill()
+                cr.set_source_rgba(1, 1, 1, 0.95)
+                cr.set_line_width(2.5)
+                cr.arc(cx + s * 0.14, eye_y, 6, math.pi + 0.3, -0.3)
+                cr.stroke()
+            elif emo == "excited":
+                # Star eyes ★
+                self._draw_star(cr, cx - s * 0.14, eye_y, 8)
+                self._draw_star(cr, cx + s * 0.14, eye_y, 8)
+            else:
+                # neutral — normal round eyes
+                if blinking:
+                    cr.set_line_width(2)
+                    cr.move_to(cx - s * 0.14 - 5, eye_y)
+                    cr.line_to(cx - s * 0.14 + 5, eye_y)
+                    cr.stroke()
+                    cr.move_to(cx + s * 0.14 - 5, eye_y)
+                    cr.line_to(cx + s * 0.14 + 5, eye_y)
+                    cr.stroke()
+                else:
+                    cr.arc(cx - s * 0.14, eye_y, eye_r, 0, math.pi * 2)
+                    cr.fill()
+                    cr.arc(cx + s * 0.14, eye_y, eye_r, 0, math.pi * 2)
+                    cr.fill()
+                    cr.set_source_rgba(0.1, 0.1, 0.15, 1)
+                    cr.arc(cx - s * 0.14, eye_y, 3, 0, math.pi * 2)
+                    cr.fill()
+                    cr.arc(cx + s * 0.14, eye_y, 3, 0, math.pi * 2)
+                    cr.fill()
+
+            # Mouth for round style
+            cr.set_source_rgba(r, g, b, 0.7)
+            cr.set_line_width(2)
+            mouth_y = eye_y + s * 0.2
+            if emo == "happy":
+                cr.arc(cx, mouth_y, 12, 0.2, math.pi - 0.2)
+                cr.stroke()
+            elif emo == "sad":
+                cr.arc(cx, mouth_y + 8, 10, math.pi + 0.3, -0.3)
+                cr.stroke()
+            elif emo == "surprised":
+                cr.arc(cx, mouth_y, 6, 0, math.pi * 2)
+                cr.stroke()
+            elif emo == "thinking":
+                cr.move_to(cx - 6, mouth_y)
+                cr.line_to(cx + 6, mouth_y)
+                cr.stroke()
+            elif emo == "sleepy":
+                cr.move_to(cx - 4, mouth_y)
+                cr.line_to(cx + 4, mouth_y)
+                cr.stroke()
+            elif emo == "excited":
+                cr.arc(cx, mouth_y, 14, 0.1, math.pi - 0.1)
+                cr.stroke()
+            else:
+                cr.arc(cx, mouth_y, 8, 0.3, math.pi - 0.3)
+                cr.stroke()
+
+        else:
+            # Modern style: rectangular screen eyes
+            eye_h = 5 if blinking else 7
+            cr.set_source_rgba(0.4, 1, 0.6, 1)
+
+            if emo == "happy":
+                # ^_^ — angled lines
+                cr.set_line_width(2.5)
+                cr.move_to(cx - s * 0.17, eye_y + 3)
+                cr.line_to(cx - s * 0.12, eye_y - 3)
+                cr.line_to(cx - s * 0.07, eye_y + 3)
+                cr.stroke()
+                cr.move_to(cx + s * 0.07, eye_y + 3)
+                cr.line_to(cx + s * 0.12, eye_y - 3)
+                cr.line_to(cx + s * 0.17, eye_y + 3)
+                cr.stroke()
+            elif emo == "sad":
+                self._rounded_rect(cr, cx - s * 0.17, eye_y - eye_h / 2, 10, eye_h, 3)
+                cr.fill()
+                self._rounded_rect(cr, cx + s * 0.07, eye_y - eye_h / 2, 10, eye_h, 3)
+                cr.fill()
+                cr.set_source_rgba(0.4, 0.7, 1.0, 0.7)
+                cr.arc(cx - s * 0.12, eye_y + 10, 3, 0, math.pi * 2)
+                cr.fill()
+            elif emo == "surprised":
+                # Big O eyes
+                cr.arc(cx - s * 0.12, eye_y, 7, 0, math.pi * 2)
+                cr.fill()
+                cr.arc(cx + s * 0.12, eye_y, 7, 0, math.pi * 2)
+                cr.fill()
+            elif emo == "sleepy":
+                cr.set_line_width(2)
+                cr.move_to(cx - s * 0.17, eye_y)
+                cr.line_to(cx - s * 0.07, eye_y)
+                cr.stroke()
+                cr.move_to(cx + s * 0.07, eye_y)
+                cr.line_to(cx + s * 0.17, eye_y)
+                cr.stroke()
+            elif emo == "thinking":
+                self._rounded_rect(cr, cx - s * 0.17, eye_y - eye_h / 2, 10, eye_h, 3)
+                cr.fill()
+                cr.set_line_width(2)
+                cr.move_to(cx + s * 0.07, eye_y)
+                cr.line_to(cx + s * 0.17, eye_y)
+                cr.stroke()
+            elif emo == "excited":
+                self._draw_star(cr, cx - s * 0.12, eye_y, 7)
+                self._draw_star(cr, cx + s * 0.12, eye_y, 7)
+            else:
+                # neutral
+                self._rounded_rect(cr, cx - s * 0.17, eye_y - eye_h / 2, 10, eye_h, 3)
+                cr.fill()
+                self._rounded_rect(cr, cx + s * 0.07, eye_y - eye_h / 2, 10, eye_h, 3)
+                cr.fill()
+
+            # Mouth for modern style
+            cr.set_source_rgba(0.4, 1, 0.6, 0.7)
+            cr.set_line_width(2)
+            mouth_y = eye_y + s * 0.17
+            if emo == "happy":
+                cr.arc(cx, mouth_y, 12, 0.2, math.pi - 0.2)
+                cr.stroke()
+            elif emo == "sad":
+                cr.arc(cx, mouth_y + 8, 8, math.pi + 0.3, -0.3)
+                cr.stroke()
+            elif emo == "surprised":
+                cr.arc(cx, mouth_y, 5, 0, math.pi * 2)
+                cr.stroke()
+            elif emo == "thinking":
+                cr.move_to(cx - 6, mouth_y)
+                cr.line_to(cx + 6, mouth_y)
+                cr.stroke()
+            elif emo == "sleepy":
+                cr.move_to(cx - 4, mouth_y)
+                cr.line_to(cx + 4, mouth_y)
+                cr.stroke()
+            elif emo == "excited":
+                cr.arc(cx, mouth_y, 14, 0.1, math.pi - 0.1)
+                cr.stroke()
+            else:
+                cr.arc(cx, mouth_y, 10, 0.2, math.pi - 0.2)
+                cr.stroke()
+
+    @staticmethod
+    def _draw_star(cr, cx, cy, size):
+        """Draw a small star shape."""
+        import math as m
+        cr.new_path()
+        for i in range(5):
+            angle = -m.pi / 2 + i * 2 * m.pi / 5
+            outer_x = cx + size * m.cos(angle)
+            outer_y = cy + size * m.sin(angle)
+            inner_angle = angle + m.pi / 5
+            inner_x = cx + size * 0.4 * m.cos(inner_angle)
+            inner_y = cy + size * 0.4 * m.sin(inner_angle)
+            if i == 0:
+                cr.move_to(outer_x, outer_y)
+            else:
+                cr.line_to(outer_x, outer_y)
+            cr.line_to(inner_x, inner_y)
+        cr.close_path()
+        cr.fill()
+
     def _draw_bubble(self, cr, bx, by, s):
         alpha = self.bubble_alpha
 
@@ -631,6 +789,7 @@ class RobotOverlay(Gtk.Window):
         if event.button == 1:
             if self.on_click:
                 self.on_click("menu")
+                return True  # stop event propagation
             else:
                 self.dragging = True
                 ox, oy = self.get_position()
@@ -649,7 +808,6 @@ class RobotOverlay(Gtk.Window):
             win_size = self.robot_size * 5
             self.x = ox + win_size // 2
             self.y = oy + win_size // 2
-            self.target_angle = random.uniform(0, 2 * math.pi)
             if not self._focused:
                 self._switch_timer(self.FRAME_MS_IDLE)
 

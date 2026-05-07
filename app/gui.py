@@ -396,10 +396,10 @@ PRIORITY_MAP = {
 }
 
 STATUS_MAP = {
-    "active":      ("📝", "Активне"),
-    "in_progress": ("🔄", "В роботі"),
-    "done":        ("✅", "Виконано"),
-    "archived":    ("📦", "Архів"),
+    "active":      ("📝", "Active"),
+    "in_progress": ("🔄", "In Progress"),
+    "done":        ("✅", "Done"),
+    "archived":    ("📦", "Archived"),
 }
 
 
@@ -425,7 +425,7 @@ def _btn(label, css_class="btn-primary", on_click=None):
 
 class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, app, robot=None, scheduler=None):
-        super().__init__(application=app, title="📒 AI Записник")
+        super().__init__(application=app, title="📒 AI Notebook")
         self.set_default_size(1100, 720)
         self.set_position(Gtk.WindowPosition.CENTER)
 
@@ -491,19 +491,19 @@ class MainWindow(Gtk.ApplicationWindow):
         sidebar.get_style_context().add_class("sidebar")
 
         # Logo
-        logo = _label("  📒 AI Записник", ["header-title"])
+        logo = _label("  📒 AI Notebook", ["header-title"])
         logo.set_margin_top(16)
         logo.set_margin_bottom(8)
         sidebar.pack_start(logo, False, False, 0)
 
         # Nav section
-        sidebar.pack_start(_label("  НАВІГАЦІЯ", ["sidebar-label"]), False, False, 0)
+        sidebar.pack_start(_label("  NAVIGATION", ["sidebar-label"]), False, False, 0)
 
         self.nav_buttons = {}
         nav_items = [
-            ("dashboard", "📊 Дашборд"),
-            ("entries",   "📋 Всі записи"),
-            ("settings",  "⚙️ Налаштування"),
+            ("dashboard", "📊 Dashboard"),
+            ("entries",   "📋 All Entries"),
+            ("settings",  "⚙️ Settings"),
         ]
         for key, text in nav_items:
             btn = Gtk.Button(label=text)
@@ -515,11 +515,11 @@ class MainWindow(Gtk.ApplicationWindow):
             self.nav_buttons[key] = btn
 
         # Categories section
-        sidebar.pack_start(_label("  КАТЕГОРІЇ", ["sidebar-label"]), False, False, 4)
+        sidebar.pack_start(_label("  CATEGORIES", ["sidebar-label"]), False, False, 4)
         self.cat_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         sidebar.pack_start(self.cat_box, False, False, 0)
 
-        add_cat_btn = Gtk.Button(label="  ＋ Додати категорію")
+        add_cat_btn = Gtk.Button(label="  ＋ Add category")
         add_cat_btn.get_style_context().add_class("sidebar-btn")
         add_cat_btn.set_relief(Gtk.ReliefStyle.NONE)
         add_cat_btn.set_halign(Gtk.Align.FILL)
@@ -530,7 +530,7 @@ class MainWindow(Gtk.ApplicationWindow):
         sidebar.pack_start(Gtk.Label(), True, True, 0)
 
         # About button
-        about_btn = Gtk.Button(label="  ℹ️ Про додаток")
+        about_btn = Gtk.Button(label="  ℹ️ About")
         about_btn.get_style_context().add_class("sidebar-btn")
         about_btn.set_relief(Gtk.ReliefStyle.NONE)
         about_btn.set_halign(Gtk.Align.FILL)
@@ -599,7 +599,7 @@ class MainWindow(Gtk.ApplicationWindow):
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         bar.get_style_context().add_class("topbar")
 
-        self.header_label = _label("📊 Дашборд", ["header-title"])
+        self.header_label = _label("📊 Dashboard", ["header-title"])
         bar.pack_start(self.header_label, False, False, 0)
 
         # Spacer
@@ -608,13 +608,13 @@ class MainWindow(Gtk.ApplicationWindow):
         # Search
         self.search_entry = Gtk.Entry()
         self.search_entry.get_style_context().add_class("search-entry")
-        self.search_entry.set_placeholder_text("🔍 Пошук записів...")
+        self.search_entry.set_placeholder_text("🔍 Search entries...")
         self.search_entry.set_size_request(280, -1)
         self.search_entry.connect("changed", self._on_search)
         bar.pack_start(self.search_entry, False, False, 0)
 
         # New entry button
-        new_btn = _btn("＋ Новий запис", "btn-primary", self._on_new_entry)
+        new_btn = _btn("＋ New Entry", "btn-primary", self._on_new_entry)
         bar.pack_start(new_btn, False, False, 0)
 
         return bar
@@ -638,8 +638,8 @@ class MainWindow(Gtk.ApplicationWindow):
             header_box.pack_start(img, False, False, 0)
             text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             text_box.set_valign(Gtk.Align.CENTER)
-            text_box.pack_start(_label("🚀 Привіт! Я твій робот з реактивним ранцем", ["header-title"]), False, False, 0)
-            text_box.pack_start(_label("Створюй нотатки, задачі та нагадування", ["entry-meta"]), False, False, 0)
+            text_box.pack_start(_label("🚀 Hi! I'm your jetpack robot", ["header-title"]), False, False, 0)
+            text_box.pack_start(_label("Create notes, tasks and reminders", ["entry-meta"]), False, False, 0)
             header_box.pack_start(text_box, True, True, 0)
             vbox.pack_start(header_box, False, False, 0)
 
@@ -647,11 +647,11 @@ class MainWindow(Gtk.ApplicationWindow):
         stats_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         self.stat_cards = {}
         stat_items = [
-            ("total",       "📋", "Всього"),
-            ("active",      "📝", "Активних"),
-            ("in_progress", "🔄", "В роботі"),
-            ("done",        "✅", "Виконано"),
-            ("overdue",     "⚠️", "Прострочено"),
+            ("total",       "📋", "Total"),
+            ("active",      "📝", "Active"),
+            ("in_progress", "🔄", "In Progress"),
+            ("done",        "✅", "Done"),
+            ("overdue",     "⚠️", "Overdue"),
         ]
         for key, icon, label in stat_items:
             card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -666,7 +666,7 @@ class MainWindow(Gtk.ApplicationWindow):
         vbox.pack_start(stats_box, False, False, 0)
 
         # Recent entries section
-        vbox.pack_start(_label("📋 Останні записи", ["header-title"]), False, False, 0)
+        vbox.pack_start(_label("📋 Recent Entries", ["header-title"]), False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -688,35 +688,35 @@ class MainWindow(Gtk.ApplicationWindow):
         filter_bar.set_margin_end(20)
         filter_bar.set_margin_bottom(12)
 
-        filter_bar.pack_start(_label("Фільтр:", ["entry-meta"]), False, False, 0)
+        filter_bar.pack_start(_label("Filter:", ["entry-meta"]), False, False, 0)
 
         self.filter_status = Gtk.ComboBoxText()
-        for val, label in [("", "Всі статуси"), ("active", "Активні"),
-                           ("in_progress", "В роботі"), ("done", "Виконані"),
-                           ("archived", "Архів")]:
+        for val, label in [("", "All statuses"), ("active", "Active"),
+                           ("in_progress", "In Progress"), ("done", "Done"),
+                           ("archived", "Archived")]:
             self.filter_status.append(val, label)
         self.filter_status.set_active(0)
         self.filter_status.connect("changed", self._on_filter_changed)
         filter_bar.pack_start(self.filter_status, False, False, 0)
 
         self.filter_priority = Gtk.ComboBoxText()
-        for val, label in [("", "Всі пріоритети"), ("urgent", "🔴 Терміново"),
-                           ("high", "🟠 Високий"), ("normal", "⚪ Звичайний"),
-                           ("low", "⬇️ Низький")]:
+        for val, label in [("", "All priorities"), ("urgent", "🔴 Urgent"),
+                           ("high", "🟠 High"), ("normal", "⚪ Normal"),
+                           ("low", "⬇️ Low")]:
             self.filter_priority.append(val, label)
         self.filter_priority.set_active(0)
         self.filter_priority.connect("changed", self._on_filter_changed)
         filter_bar.pack_start(self.filter_priority, False, False, 0)
 
         self.filter_type = Gtk.ComboBoxText()
-        for val, label in [("", "Всі типи"), ("note", "📝 Нотатки"), ("task", "☑️ Задачі")]:
+        for val, label in [("", "All types"), ("note", "📝 Notes"), ("task", "☑️ Tasks")]:
             self.filter_type.append(val, label)
         self.filter_type.set_active(0)
         self.filter_type.connect("changed", self._on_filter_changed)
         filter_bar.pack_start(self.filter_type, False, False, 0)
 
         # Clear filters
-        clear_btn = _btn("✕ Очистити", "btn-secondary")
+        clear_btn = _btn("✕ Clear", "btn-secondary")
         clear_btn.connect("clicked", self._clear_filters)
         filter_bar.pack_start(clear_btn, False, False, 0)
 
@@ -746,11 +746,11 @@ class MainWindow(Gtk.ApplicationWindow):
         vbox.set_margin_bottom(24)
 
         # Robot section
-        vbox.pack_start(_label("🤖 Робот-помічник", ["header-title"]), False, False, 0)
+        vbox.pack_start(_label("🤖 Robot Assistant", ["header-title"]), False, False, 0)
 
         # Visibility
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.pack_start(_label("Показати робота"), False, False, 0)
+        row.pack_start(_label("Show robot"), False, False, 0)
         self.robot_visible_sw = Gtk.Switch()
         self.robot_visible_sw.set_active(storage.get_setting("robot_visible", "1") == "1")
         self.robot_visible_sw.connect("state-set", self._on_robot_visible)
@@ -759,9 +759,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Robot style
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.pack_start(_label("Стиль робота"), False, False, 0)
+        row.pack_start(_label("Robot style"), False, False, 0)
         self.robot_style_combo = Gtk.ComboBoxText()
-        for val, label in [("modern", "🤖 Сучасний"), ("round", "🔵 Круглий"), ("pixel", "👾 Піксельний")]:
+        for val, label in [("modern", "🤖 Modern"), ("round", "🔵 Round"), ("pixel", "👾 Pixel")]:
             self.robot_style_combo.append(val, label)
         current_style = storage.get_setting("robot_style", "modern")
         self.robot_style_combo.set_active_id(current_style)
@@ -771,7 +771,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Color
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.pack_start(_label("Колір робота"), False, False, 0)
+        row.pack_start(_label("Robot color"), False, False, 0)
         self.robot_color_btn = Gtk.ColorButton()
         color_hex = storage.get_setting("robot_color", "#6366f1")
         h = color_hex.lstrip("#")
@@ -787,7 +787,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Size
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.pack_start(_label("Розмір робота"), False, False, 0)
+        row.pack_start(_label("Robot size"), False, False, 0)
         self.robot_size_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 30, 120, 5)
         self.robot_size_scale.set_value(int(storage.get_setting("robot_size", "60")))
         self.robot_size_scale.set_size_request(200, -1)
@@ -797,7 +797,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Speed
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.pack_start(_label("Швидкість руху"), False, False, 0)
+        row.pack_start(_label("Movement speed"), False, False, 0)
         self.robot_speed_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.5, 5, 0.5)
         self.robot_speed_scale.set_value(float(storage.get_setting("robot_speed", "2")))
         self.robot_speed_scale.set_size_request(200, -1)
@@ -807,25 +807,25 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Test bubble
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.pack_start(_label("Тестова думка робота"), False, False, 0)
-        test_btn = _btn("💬 Показати думку", "btn-secondary")
+        row.pack_start(_label("Test robot thought"), False, False, 0)
+        test_btn = _btn("💬 Show thought", "btn-secondary")
         test_btn.connect("clicked", self._on_test_bubble)
         row.pack_end(test_btn, False, False, 0)
         vbox.pack_start(self._settings_card(row), False, False, 0)
 
         # Telegram section
-        vbox.pack_start(_label("🤖 Telegram бот", ["header-title"]), False, False, 8)
+        vbox.pack_start(_label("🤖 Telegram Bot", ["header-title"]), False, False, 8)
 
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.pack_start(_label("Статус бота:"), False, False, 0)
-        tg_status = "✅ Активний" if storage.get_setting("telegram_token") else "❌ Не налаштовано"
+        row.pack_start(_label("Bot status:"), False, False, 0)
+        tg_status = "✅ Active" if storage.get_setting("telegram_token") else "❌ Not configured"
         row.pack_start(_label(tg_status), False, False, 0)
         vbox.pack_start(self._settings_card(row), False, False, 0)
 
         # Data section
-        vbox.pack_start(_label("💾 Дані", ["header-title"]), False, False, 8)
+        vbox.pack_start(_label("💾 Data", ["header-title"]), False, False, 8)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.pack_start(_label(f"База даних: {storage.DB_PATH}"), False, False, 0)
+        row.pack_start(_label(f"Database: {storage.DB_PATH}"), False, False, 0)
         vbox.pack_start(self._settings_card(row), False, False, 0)
 
         scroll.add(vbox)
@@ -883,7 +883,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.recent_list.remove(child)
         entries = storage.list_entries(limit=8)
         if not entries:
-            self.recent_list.pack_start(_label("  Записів поки немає", ["entry-meta"]), False, False, 8)
+            self.recent_list.pack_start(_label("  No entries yet", ["entry-meta"]), False, False, 8)
         else:
             for e in entries:
                 self.recent_list.pack_start(self._entry_row(e), False, False, 0)
@@ -899,7 +899,7 @@ class MainWindow(Gtk.ApplicationWindow):
         entries = storage.list_entries(**self.current_filter)
         if not entries:
             self.entries_list.pack_start(
-                _label("  Записів не знайдено", ["entry-meta"]), False, False, 16
+                _label("  No entries found", ["entry-meta"]), False, False, 16
             )
         else:
             for e in entries:
@@ -971,7 +971,7 @@ class MainWindow(Gtk.ApplicationWindow):
         status_icon, status_text = STATUS_MAP.get(e["status"], ("📝", ""))
         top.pack_start(_label(f"{status_icon} {status_text}", ["badge"]), False, False, 0)
 
-        type_text = "☑️ Задача" if e["entry_type"] == "task" else "📝 Нотатка"
+        type_text = "☑️ Task" if e["entry_type"] == "task" else "📝 Note"
         top.pack_start(_label(type_text, ["badge"]), False, False, 0)
 
         prio_icon, prio_cls = PRIORITY_MAP.get(e["priority"], ("", ""))
@@ -987,13 +987,13 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Actions
         if e["status"] != "done":
-            done_btn = Gtk.Button(label="✅ Виконано")
+            done_btn = Gtk.Button(label="✅ Done")
             done_btn.get_style_context().add_class("btn-icon")
             done_btn.set_relief(Gtk.ReliefStyle.NONE)
             done_btn.connect("clicked", lambda b, eid=e["id"]: self._on_quick_done(eid))
             top.pack_start(done_btn, False, False, 0)
 
-        edit_btn = Gtk.Button(label="✏ Редагувати")
+        edit_btn = Gtk.Button(label="✏ Edit")
         edit_btn.get_style_context().add_class("btn-icon")
         edit_btn.set_relief(Gtk.ReliefStyle.NONE)
         edit_btn.connect("clicked", lambda b, eid=e["id"]: self._on_edit_entry(eid))
@@ -1041,12 +1041,12 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _show_entry_dialog(self, entry=None):
         dlg = Gtk.Dialog(
-            title="Редагувати запис" if entry else "Новий запис",
+            title="Edit Entry" if entry else "New Entry",
             parent=self,
             modal=True,
         )
-        dlg.add_button("Скасувать", Gtk.ResponseType.CANCEL)
-        dlg.add_button("Зберегти", Gtk.ResponseType.OK)
+        dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dlg.add_button("Save", Gtk.ResponseType.OK)
         dlg.set_default_size(520, 560)
         dlg.set_resizable(False)
 
@@ -1057,33 +1057,33 @@ class MainWindow(Gtk.ApplicationWindow):
         content.set_margin_end(20)
 
         # Title
-        content.pack_start(_label("Заголовок *"), False, False, 0)
+        content.pack_start(_label("Title *"), False, False, 0)
         title_entry = Gtk.Entry()
         title_entry.set_text(entry["title"] if entry else "")
-        title_entry.set_placeholder_text("Введіть заголовок...")
+        title_entry.set_placeholder_text("Enter title...")
         content.pack_start(title_entry, False, False, 0)
 
         # Type + Priority row
         hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        hbox.pack_start(_label("Тип:"), False, False, 0)
+        hbox.pack_start(_label("Type:"), False, False, 0)
         type_combo = Gtk.ComboBoxText()
-        type_combo.append("note", "📝 Нотатка")
-        type_combo.append("task", "☑️ Задача")
+        type_combo.append("note", "📝 Note")
+        type_combo.append("task", "☑️ Task")
         type_combo.set_active_id(entry["entry_type"] if entry else "note")
         hbox.pack_start(type_combo, True, True, 0)
 
-        hbox.pack_start(_label("Пріоритет:"), False, False, 0)
+        hbox.pack_start(_label("Priority:"), False, False, 0)
         prio_combo = Gtk.ComboBoxText()
-        prio_combo.append("normal", "⚪ Звичайний")
-        prio_combo.append("low", "⬇️ Низький")
-        prio_combo.append("high", "🟠 Високий")
-        prio_combo.append("urgent", "🔴 Терміново")
+        prio_combo.append("normal", "⚪ Normal")
+        prio_combo.append("low", "⬇️ Low")
+        prio_combo.append("high", "🟠 High")
+        prio_combo.append("urgent", "🔴 Urgent")
         prio_combo.set_active_id(entry["priority"] if entry else "normal")
         hbox.pack_start(prio_combo, True, True, 0)
         content.pack_start(hbox, False, False, 0)
 
         # Content
-        content.pack_start(_label("Зміст"), False, False, 0)
+        content.pack_start(_label("Content"), False, False, 0)
         content_view = Gtk.TextView()
         content_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         content_view.set_size_request(-1, 100)
@@ -1098,18 +1098,18 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Category + Status row
         hbox2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        hbox2.pack_start(_label("Категорія:"), False, False, 0)
+        hbox2.pack_start(_label("Category:"), False, False, 0)
         cat_combo = Gtk.ComboBoxText()
-        cat_combo.append("", "Без категорії")
+        cat_combo.append("", "No category")
         for c in self.categories:
             cat_combo.append(str(c["id"]), f"{c['icon']} {c['name']}")
         cat_combo.set_active_id(str(entry["category_id"]) if entry and entry.get("category_id") else "")
         hbox2.pack_start(cat_combo, True, True, 0)
 
-        hbox2.pack_start(_label("Статус:"), False, False, 0)
+        hbox2.pack_start(_label("Status:"), False, False, 0)
         status_combo = Gtk.ComboBoxText()
-        for val, label in [("active", "📝 Активний"), ("in_progress", "🔄 В роботі"),
-                           ("done", "✅ Виконано"), ("archived", "📦 Архів")]:
+        for val, label in [("active", "📝 Active"), ("in_progress", "🔄 In Progress"),
+                           ("done", "✅ Done"), ("archived", "📦 Archived")]:
             status_combo.append(val, label)
         status_combo.set_active_id(entry["status"] if entry else "active")
         hbox2.pack_start(status_combo, True, True, 0)
@@ -1119,8 +1119,8 @@ class MainWindow(Gtk.ApplicationWindow):
         hbox3 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
 
         # Due date picker
-        hbox3.pack_start(_label("Дата виконання:"), False, False, 0)
-        due_cal_btn = Gtk.Button(label="📅 Обрати дату")
+        hbox3.pack_start(_label("Due date:"), False, False, 0)
+        due_cal_btn = Gtk.Button(label="📅 Pick date")
         due_cal_btn.get_style_context().add_class("sidebar-btn")
         self._selected_due_date = entry.get("due_date") if entry and entry.get("due_date") else None
         if self._selected_due_date:
@@ -1129,8 +1129,8 @@ class MainWindow(Gtk.ApplicationWindow):
         hbox3.pack_start(due_cal_btn, True, True, 0)
 
         # Remind date+time picker
-        hbox3.pack_start(_label("Нагадати:"), False, False, 0)
-        remind_cal_btn = Gtk.Button(label="📅 Обрати дату і час")
+        hbox3.pack_start(_label("Remind:"), False, False, 0)
+        remind_cal_btn = Gtk.Button(label="📅 Pick date and time")
         remind_cal_btn.get_style_context().add_class("sidebar-btn")
         self._selected_remind_date = None
         self._selected_remind_hour = 9
@@ -1150,15 +1150,15 @@ class MainWindow(Gtk.ApplicationWindow):
         content.pack_start(hbox3, False, False, 0)
 
         # Tags
-        content.pack_start(_label("Теги (через кому)"), False, False, 0)
+        content.pack_start(_label("Tags (comma separated)"), False, False, 0)
         tags_entry = Gtk.Entry()
-        tags_entry.set_placeholder_text("робота, термінове, ідея...")
+        tags_entry.set_placeholder_text("work, urgent, idea...")
         if entry and entry.get("tags"):
             tags_entry.set_text(", ".join(entry["tags"]))
         content.pack_start(tags_entry, False, False, 0)
 
         # Pinned
-        pinned_cb = Gtk.CheckButton(label="📌 Закріпити запис")
+        pinned_cb = Gtk.CheckButton(label="📌 Pin entry")
         if entry:
             pinned_cb.set_active(bool(entry.get("pinned")))
         content.pack_start(pinned_cb, False, False, 0)
@@ -1223,9 +1223,9 @@ class MainWindow(Gtk.ApplicationWindow):
             transient_for=self, modal=True,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.YES_NO,
-            text="Видалити запис?",
+            text="Delete entry?",
         )
-        dlg.format_secondary_text("Цю дію не можна скасувати.")
+        dlg.format_secondary_text("This action cannot be undone.")
         resp = dlg.run()
         dlg.destroy()
         if resp == Gtk.ResponseType.YES:
@@ -1278,8 +1278,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _pick_date(self, btn, attr_name):
         """Open a calendar dialog to pick a date."""
-        dlg = Gtk.Dialog(title="Оберіть дату", parent=self, modal=True)
-        dlg.add_button("Скасувати", Gtk.ResponseType.CANCEL)
+        dlg = Gtk.Dialog(title="Pick date", parent=self, modal=True)
+        dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
         dlg.add_button("OK", Gtk.ResponseType.OK)
         dlg.set_default_size(300, 300)
 
@@ -1302,9 +1302,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _pick_datetime(self, btn):
         """Open a calendar + time dialog to pick date and time."""
-        dlg = Gtk.Dialog(title="Оберіть дату та час нагадування", parent=self, modal=True)
-        dlg.add_button("Скасувати", Gtk.ResponseType.CANCEL)
-        dlg.add_button("Очистити", Gtk.ResponseType.REJECT)
+        dlg = Gtk.Dialog(title="Pick reminder date and time", parent=self, modal=True)
+        dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dlg.add_button("Clear", Gtk.ResponseType.REJECT)
         dlg.add_button("OK", Gtk.ResponseType.OK)
         dlg.set_default_size(350, 400)
 
@@ -1315,7 +1315,7 @@ class MainWindow(Gtk.ApplicationWindow):
         content.set_margin_top(12)
 
         # Calendar
-        content.pack_start(_label("📅 Дата:"), False, False, 0)
+        content.pack_start(_label("📅 Date:"), False, False, 0)
         cal = Gtk.Calendar()
         cal.set_display_options(
             Gtk.CalendarDisplayOptions.SHOW_HEADING |
@@ -1334,7 +1334,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Time picker
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        time_box.pack_start(_label("🕐 Час:"), False, False, 0)
+        time_box.pack_start(_label("🕐 Time:"), False, False, 0)
 
         hour_spin = Gtk.SpinButton.new_with_range(0, 23, 1)
         hour_spin.set_value(self._selected_remind_hour)
@@ -1376,16 +1376,16 @@ class MainWindow(Gtk.ApplicationWindow):
             self._selected_remind_date = None
             self._selected_remind_hour = 9
             self._selected_remind_minute = 0
-            btn.set_label("📅 Обрати дату і час")
+            btn.set_label("📅 Pick date and time")
 
         dlg.destroy()
 
     def _on_about(self, btn):
         import os
         dlg = Gtk.AboutDialog(parent=self, modal=True)
-        dlg.set_program_name("AI Записник")
+        dlg.set_program_name("AI Notebook")
         dlg.set_version("1.0.0")
-        dlg.set_comments("Настільний додаток з літаючим роботом-помічником")
+        dlg.set_comments("Desktop app with flying robot assistant")
         dlg.set_website("https://github.com/Dima12348/ai-notebook")
         dlg.set_website_label("GitHub")
         dlg.set_license_type(Gtk.License.MIT_X11)
@@ -1406,11 +1406,11 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _show_category_dialog(self, cat=None):
         dlg = Gtk.Dialog(
-            title="Редагувати категорію" if cat else "Нова категорія",
+            title="Edit Category" if cat else "New Category",
             parent=self, modal=True,
         )
-        dlg.add_button("Скасувать", Gtk.ResponseType.CANCEL)
-        dlg.add_button("Зберегти", Gtk.ResponseType.OK)
+        dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dlg.add_button("Save", Gtk.ResponseType.OK)
         dlg.set_default_size(360, 200)
 
         content = dlg.get_content_area()
@@ -1419,20 +1419,20 @@ class MainWindow(Gtk.ApplicationWindow):
         content.set_margin_start(16)
         content.set_margin_end(16)
 
-        content.pack_start(_label("Назва *"), False, False, 0)
+        content.pack_start(_label("Name *"), False, False, 0)
         name_entry = Gtk.Entry()
         name_entry.set_text(cat["name"] if cat else "")
         content.pack_start(name_entry, False, False, 0)
 
         hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        hbox.pack_start(_label("Іконка:"), False, False, 0)
+        hbox.pack_start(_label("Icon:"), False, False, 0)
         icon_entry = Gtk.Entry()
         icon_entry.set_text(cat["icon"] if cat else "📁")
         icon_entry.set_width_chars(4)
         icon_entry.set_max_width_chars(4)
         hbox.pack_start(icon_entry, False, False, 0)
 
-        hbox.pack_start(_label("Колір:"), False, False, 0)
+        hbox.pack_start(_label("Color:"), False, False, 0)
         color_btn = Gtk.ColorButton()
         if cat:
             h = cat["color"].lstrip("#")
@@ -1469,9 +1469,9 @@ class MainWindow(Gtk.ApplicationWindow):
             transient_for=self, modal=True,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.YES_NO,
-            text="Видалити категорію?",
+            text="Delete category?",
         )
-        dlg.format_secondary_text("Записи в ній збережуться.")
+        dlg.format_secondary_text("Entries in it will be preserved.")
         resp = dlg.run()
         dlg.destroy()
         if resp == Gtk.ResponseType.YES:
@@ -1517,4 +1517,4 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _on_test_bubble(self, btn):
         if self.robot:
-            self.robot.show_bubble("Привіт! Я твій робот-помічник! 🤖")
+            self.robot.show_bubble("Hi! I'm your robot assistant! 🤖")

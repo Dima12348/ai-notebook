@@ -136,11 +136,11 @@ def init_db():
         conn.executemany(
             "INSERT INTO categories (name, color, icon, sort_order) VALUES (?,?,?,?)",
             [
-                ("Справи",  "#6366f1", "📋", 1),
-                ("Нотатки", "#10b981", "📝", 2),
-                ("Ідеї",    "#f59e0b", "💡", 3),
-                ("Зустрічі","#ef4444", "📅", 4),
-                ("Покупки", "#8b5cf6", "🛒", 5),
+                ("Tasks",    "#6366f1", "📋", 1),
+                ("Notes",    "#10b981", "📝", 2),
+                ("Ideas",    "#f59e0b", "💡", 3),
+                ("Meetings", "#ef4444", "📅", 4),
+                ("Shopping", "#8b5cf6", "🛒", 5),
             ],
         )
     # Seed default robot settings
