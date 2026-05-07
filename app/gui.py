@@ -627,21 +627,30 @@ class MainWindow(Gtk.ApplicationWindow):
         vbox.set_margin_start(24)
         vbox.set_margin_end(24)
 
-        # Welcome header with robot image
-        import os
-        robot_img_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "robot.png")
-        if os.path.exists(robot_img_path):
-            header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
-            header_box.set_valign(Gtk.Align.START)
-            img = Gtk.Image.new_from_file(robot_img_path)
-            img.set_pixel_size(80)
-            header_box.pack_start(img, False, False, 0)
-            text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-            text_box.set_valign(Gtk.Align.CENTER)
-            text_box.pack_start(_label("🚀 Hi! I'm your jetpack robot", ["header-title"]), False, False, 0)
-            text_box.pack_start(_label("Create notes, tasks and reminders", ["entry-meta"]), False, False, 0)
-            header_box.pack_start(text_box, True, True, 0)
-            vbox.pack_start(header_box, False, False, 0)
+        # App description header
+        header_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        header_box.get_style_context().add_class("stat-card")
+        header_box.set_margin_bottom(8)
+        header_box.pack_start(_label("📒 AI Notebook", ["header-title"]), False, False, 0)
+        header_box.pack_start(_label(
+            "Smart note-taking app with a robot assistant. "
+            "Create notes, tasks, and reminders — your jetpack robot will notify you on time.",
+            ["entry-meta"]
+        ), False, False, 0)
+
+        features_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        features_box.set_margin_start(12)
+        for icon, text in [
+            ("📝", "Notes & Tasks — create, edit, pin, filter by status and priority"),
+            ("⏰", "Reminders — set date & time, get sound + desktop notifications"),
+            ("📂", "Categories — organize entries with custom icons and colors"),
+            ("🤖", "Robot Assistant — floating desktop companion with emotions"),
+            ("🔍", "Search — instant full-text search across all entries"),
+            ("📊", "Dashboard — stats overview with recent entries"),
+        ]:
+            features_box.pack_start(_label(f"  {icon}  {text}", ["entry-meta"]), False, False, 0)
+        header_box.pack_start(features_box, False, False, 0)
+        vbox.pack_start(header_box, False, False, 0)
 
         # Stats cards row
         stats_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -816,11 +825,28 @@ class MainWindow(Gtk.ApplicationWindow):
         # Telegram section
         vbox.pack_start(_label("🤖 Telegram Bot", ["header-title"]), False, False, 8)
 
+        # Token input
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        row.pack_start(_label("Bot status:"), False, False, 0)
-        tg_status = "✅ Active" if storage.get_setting("telegram_token") else "❌ Not configured"
-        row.pack_start(_label(tg_status), False, False, 0)
+        row.pack_start(_label("Bot token:"), False, False, 0)
+        self.tg_token_entry = Gtk.Entry()
+        self.tg_token_entry.set_placeholder_text("123456:ABC-DEF...")
+        self.tg_token_entry.set_visibility(False)  # hide token like password
+        current_token = storage.get_setting("telegram_token", "")
+        if current_token:
+            self.tg_token_entry.set_text(current_token)
+        self.tg_token_entry.set_size_request(300, -1)
+        row.pack_start(self.tg_token_entry, True, True, 0)
         vbox.pack_start(self._settings_card(row), False, False, 0)
+
+        # Status + Save button
+        row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        tg_status = "✅ Token saved" if current_token else "❌ Not configured"
+        self.tg_status_label = _label(tg_status)
+        row2.pack_start(self.tg_status_label, True, True, 0)
+        save_tg_btn = _btn("💾 Save Token", "btn-primary")
+        save_tg_btn.connect("clicked", self._on_save_telegram_token)
+        row2.pack_end(save_tg_btn, False, False, 0)
+        vbox.pack_start(self._settings_card(row2), False, False, 0)
 
         # Data section
         vbox.pack_start(_label("💾 Data", ["header-title"]), False, False, 8)
@@ -1514,6 +1540,14 @@ class MainWindow(Gtk.ApplicationWindow):
         storage.set_setting("robot_speed", str(val))
         if self.robot:
             self.robot.set_config(speed=val)
+
+    def _on_save_telegram_token(self, btn):
+        token = self.tg_token_entry.get_text().strip()
+        storage.set_setting("telegram_token", token)
+        if token:
+            self.tg_status_label.set_text("✅ Token saved")
+        else:
+            self.tg_status_label.set_text("❌ Not configured")
 
     def _on_test_bubble(self, btn):
         if self.robot:
